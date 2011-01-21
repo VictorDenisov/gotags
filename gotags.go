@@ -16,6 +16,7 @@
 
 // Date: 2009-11-12
 // Updated: 2010-08-21
+// Updated: 2010-11-21 Tomas Heran <tomas.heran@gmail.com>
 
 //
 // usage: gotags filename [ filename... ] > tags
@@ -27,18 +28,31 @@ import (
 	"container/vector"
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/parser"
 	"os"
 	"sort"
+	//"reflect"
 )
 
 var (
 	tags vector.StringVector
 )
 
-func output_tag(name *ast.Ident, kind byte) {
-	tags.Push(fmt.Sprintf("%s\t%s\t%d;\"\t%c",
-		name.Name, name.Position.Filename, name.Position.Line, kind))
+func output_tag(fset *token.FileSet, name *ast.Ident, kind byte) {
+	switch kind {
+	case PKG:
+		//fmt.Printf("!_DEBUG\t%#v - %c\n", name, kind)
+		tags.Push(fmt.Sprintf("%s\t%s\t/\\m^\\s*package.*%s/;\"\t%c",
+			name.Name, fset.Position(name.NamePos).Filename, name.Name, kind))
+	case FUNC:
+		tags.Push(fmt.Sprintf("%s\t%s\t/\\m^\\s*func.*%s(.*{/;\"\t%c",
+			name.Name, fset.Position(name.NamePos).Filename, name.Name, kind))
+	default:
+		//fmt.Printf("!_DEBUG\t%#v - %c\n", name, kind)
+		tags.Push(fmt.Sprintf("%s\t%s\t%d;\"\t%c",
+			name.Name, fset.Position(name.NamePos).Filename, fset.Position(name.NamePos).Line, kind))
+	}
 }
 
 func main() {
@@ -51,38 +65,44 @@ func main() {
 	}
 }
 
-const FUNC, TYPE, VAR = 'f', 't', 'v'
+const FUNC, TYPE, VAR, PKG = 'f', 't', 'v', 'p'
 
 func parse_files() {
 	for i, m := 1, len(os.Args); i < m; i++ {
-		tree, ok := parser.ParseFile(os.Args[i], nil, 0)
+		fset := token.NewFileSet()
+		tree, ok := parser.ParseFile(fset, os.Args[i], nil, 0)
 		if ok != nil {
-			println("error parsing file", os.Args[i], ok.String())
-			panic(nil)
+			fmt.Fprintf(os.Stderr, "error parsing file %s - %s\n", os.Args[i], ok.String())
+			os.Exit(1)
 		}
-
+		output_tag(fset, tree.Name, PKG);
 		for _, node := range tree.Decls {
 			switch n := node.(type) {
 			case *ast.FuncDecl:
-				output_tag(n.Name, FUNC)
+				output_tag(fset, n.Name, FUNC)
 			case *ast.GenDecl:
-				do_gen_decl(n)
+				do_gen_decl(fset, n)
 			}
 		}
 	}
 
 }
 
-func do_gen_decl(node *ast.GenDecl) {
+func do_gen_decl(fset *token.FileSet, node *ast.GenDecl) {
+	//fmt.Printf("!_DEBUG\tGenDecl\t%+v\n", node)
 	for _, v := range node.Specs {
 		switch n := v.(type) {
 		case *ast.TypeSpec:
-			output_tag(n.Name, TYPE)
+			//fmt.Printf("!_DEBUG\tTypeSpec(%+v)\t%+v\n", n.Type, n)
+			output_tag(fset, n.Name, TYPE)
 
 		case *ast.ValueSpec:
+			//fmt.Printf("!_DEBUG\tValueSpec(%s)\t%+v\n", n.Type, n)
 			for _, vv := range n.Names {
-				output_tag(vv, VAR)
+				output_tag(fset, vv, VAR)
 			}
+		default:
+			//fmt.Printf("!_DEBUG\tSPEC:%s\t%+v\n", reflect.Typeof(n), n)
 		}
 	}
 }
