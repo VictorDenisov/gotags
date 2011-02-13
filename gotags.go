@@ -58,10 +58,10 @@ func output_tag(fset *token.FileSet, name *ast.Ident, kind byte) {
 func main() {
 	parse_files()
 
-	println("!_TAG_FILE_SORTED\t1\t")
+	fmt.Println("!_TAG_FILE_SORTED\t1\t")
 	sort.SortStrings(tags)
 	for _, s := range tags {
-		println(s)
+		fmt.Println(s)
 	}
 }
 
